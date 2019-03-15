@@ -1,11 +1,13 @@
 #!/bin/bash
 #
 #
-#       MySQL_Service_Monitor agent, set writeable and readable attributes based on the 
-#   state of the local MySQL, running and read_only or not and restarts MySQL service in 
-#   case it fails.  The agent basis is the original "Mysql_Monitor" agent.
+#       MySQL_Monitor agent, set writeable and readable attributes based on the 
+#   state of the local MySQL, running and read_only or not.  The agent basis is
+#   the original "Dummy" agent written by Lars Marowsky-Br and part of the
+#   Pacemaker distribution.  Many functions are from mysql_prm.
 #
-# Copyright (c) 2019, Canonical inc., Michal Ajduk
+#
+# Copyright (c) 2013, Percona inc., Yves Trudeau, Michael Coburn
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of version 2 of the GNU General Public License as
@@ -211,6 +213,42 @@ END
 
 #######################################################################
 # Non API functions
+
+mysql_common_notify_ro() {
+    mkdir -p /tmp/mysql_monitor.ocf.ra
+    if [ -f /tmp/mysql_monitor.ocf.ra/ro_count ];then
+        count=$( cat /tmp/mysql_monitor.ocf.ra/ro_count )
+        count=`expr $count + 1`
+    else
+        count=1
+    fi
+    echo $count > /tmp/mysql_monitor.ocf.ra/ro_count   
+    if [ -x ${OCF_ROOT}/resource.d/percona/mysql_notify_handler ];then
+        ( ${OCF_ROOT}/resource.d/percona/mysql_notify_handler ro $count ) &
+    fi
+}
+
+mysql_common_notify_rw() {
+    if [ -f /tmp/mysql_monitor.ocf.ra/ro_count ];then
+        if [ -x ${OCF_ROOT}/resource.d/percona/mysql_notify_handler ];then
+            ( ${OCF_ROOT}/resource.d/percona/mysql_notify_handler rw ) &
+        fi
+    fi
+    rm -f /tmp/mysql_monitor.ocf.ra/ro_count
+}
+
+mysql_common_is_ro_timeout() {
+    if [ -f /tmp/mysql_monitor.ocf.ra/ro_count ]; then
+        count=$( cat /tmp/mysql_monitor.ocf.ra/ro_count )
+        if [ $count -gt 20 ];then
+            if [ -x ${OCF_ROOT}/resource.d/percona/mysql_notify_handler ];then
+                ( ${OCF_ROOT}/resource.d/percona/mysql_notify_handler timeout ) &
+            fi
+            return 0
+        fi
+    fi
+    return 1
+}
 
 mysql_common_check_pid() {
     local pid=$1
@@ -533,6 +571,7 @@ mysql_monitor_start() {
     fi
 
     mysql_common_start
+    mysql_common_notify_rw
     mysql_monitor
     if [ $? =  $OCF_SUCCESS ]; then
         return $OCF_SUCCESS
@@ -619,10 +658,15 @@ mysql_monitor() {
                 if [ $? -eq 0 ]; then
                     set_reader_attr 1
                     set_writer_attr 1
+                    mysql_common_notify_rw
                 else
                     set_reader_attr 0
                     set_writer_attr 0
-                    return $OCF_NOT_RUNNING
+                    mysql_common_notify_ro
+                    if mysql_common_is_ro_timeout; then
+                        ocf_log err "MySQL is out of sync: $pxcstat"
+                        return $OCF_NOT_RUNNING
+                    fi
                 fi
                 
                 ;;
@@ -712,4 +756,3 @@ esac
 rc=$?
 ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
 exit $rc
-
