@@ -237,6 +237,15 @@ mysql_common_notify_rw() {
     rm -f /tmp/mysql_monitor.ocf.ra/ro_count
 }
 
+mysql_common_notify_failed() {
+    if [ -f /tmp/mysql_monitor.ocf.ra/ro_count ];then
+        if [ -x ${OCF_ROOT}/resource.d/percona/mysql_notify_handler ];then
+            ( ${OCF_ROOT}/resource.d/percona/mysql_notify_handler failed ) &
+        fi
+    fi
+    rm -f /tmp/mysql_monitor.ocf.ra/ro_count
+}
+
 mysql_common_is_ro_timeout() {
     if [ -f /tmp/mysql_monitor.ocf.ra/ro_count ]; then
         count=$( cat /tmp/mysql_monitor.ocf.ra/ro_count )
@@ -687,12 +696,14 @@ mysql_monitor() {
             ocf_log err "MySQL is not running, but there is a pidfile"
             set_reader_attr 0
             set_writer_attr 0
+            mysql_common_notify_failed
             return $OCF_NOT_RUNNING
         fi
     else
         ocf_log err "MySQL is not running"
         set_reader_attr 0
         set_writer_attr 0
+        mysql_common_notify_failed
         return $OCF_NOT_RUNNING
     fi
 }
