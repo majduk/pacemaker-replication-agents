@@ -622,6 +622,7 @@ mysql_monitor() {
                 else
                     set_reader_attr 0
                     set_writer_attr 0
+                    return $OCF_NOT_RUNNING
                 fi
                 
                 ;;
