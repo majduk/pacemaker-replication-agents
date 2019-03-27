@@ -198,8 +198,8 @@ read-only it will get only the reader_attribute.
 </parameters>
 
 <actions>
-<action name="start"        timeout="20" />
-<action name="stop"         timeout="20" />
+<action name="start"        timeout="120" />
+<action name="stop"         timeout="120" />
 <action name="monitor"      timeout="20" interval="10" depth="0" />
 <action name="reload"       timeout="20" />
 <action name="migrate_to"   timeout="20" />
